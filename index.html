@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Audiory - Free Music Streaming</title>
+  <title>Audiory - Independent Streaming Platform</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script>
@@ -12,7 +12,10 @@
       theme: {
         extend: {
           colors: {
-            brand: { DEFAULT: '#FFA500', hover: '#E09200', bg: '#0D0D0F', card: '#18181C', border: '#26262B' }
+            brand: { DEFAULT: '#FF6B00', dark: '#E05D00', bg: '#0B0C0E', card: '#14161A', border: '#22262E' }
+          },
+          animation: {
+            'spin-slow': 'spin 12s linear infinite',
           }
         }
       }
@@ -25,126 +28,265 @@
 </head>
 <body class="bg-brand-bg text-gray-100 font-sans min-h-screen flex flex-col pb-36">
 
-  <!-- INLINE NOTIFICATION BANNER -->
-  <div id="inline-toast" class="fixed top-4 right-4 z-50 hidden max-w-sm px-4 py-3 rounded-xl bg-brand-card border border-brand text-sm font-semibold text-white shadow-2xl flex items-center gap-2">
+  <!-- INLINE FEEDBACK TOAST -->
+  <div id="inline-toast" class="fixed top-4 right-4 z-50 hidden max-w-sm px-4 py-3 rounded-xl bg-brand-card border border-brand text-xs font-semibold text-white shadow-2xl flex items-center gap-2">
     <i data-lucide="info" class="w-4 h-4 text-brand"></i>
     <span id="toast-message"></span>
   </div>
 
   <!-- TOP HEADER -->
   <header class="sticky top-0 z-30 bg-brand-bg/95 backdrop-blur-md border-b border-brand-border px-4 py-3 flex items-center justify-between">
-    <div class="flex items-center gap-2">
-      <div class="w-7 h-7 bg-brand rounded-lg flex items-center justify-center font-black text-black text-sm">A</div>
-      <span class="font-extrabold text-xl tracking-tight text-white">audiory<span class="text-brand">+</span></span>
-    </div>
+    <a href="/" class="flex items-center gap-2">
+      <div class="w-8 h-8 bg-brand rounded-xl flex items-center justify-center font-black text-black text-base shadow-lg shadow-brand/20">A</div>
+      <span class="font-black text-xl tracking-wider text-white">AUDIORY<span class="text-brand">.</span></span>
+    </a>
 
     <div class="flex items-center gap-4">
-      <a href="/creators/index.html" class="text-gray-300 hover:text-white"><i data-lucide="upload-cloud" class="w-5 h-5"></i></a>
-      <button onclick="checkAuthAndRedirect()" class="relative text-gray-300 hover:text-white">
+      <a href="/creators/" class="text-gray-300 hover:text-brand transition-colors" title="Upload Dashboard">
+        <i data-lucide="upload-cloud" class="w-5 h-5"></i>
+      </a>
+      <button onclick="toggleModal('notifications-modal')" class="relative text-gray-300 hover:text-brand transition-colors">
         <i data-lucide="bell" class="w-5 h-5"></i>
-        <span class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-brand rounded-full"></span>
+        <span id="notif-badge" class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-brand rounded-full hidden"></span>
       </button>
-      <a href="/login/index.html" id="nav-auth-link" class="text-gray-300 hover:text-white"><i data-lucide="user" class="w-5 h-5"></i></a>
+      <button onclick="toggleModal('settings-modal')" class="text-gray-300 hover:text-brand transition-colors">
+        <i data-lucide="settings" class="w-5 h-5"></i>
+      </button>
+      <a href="/login/" id="header-user-icon" class="text-gray-300 hover:text-brand transition-colors">
+        <i data-lucide="user" class="w-5 h-5"></i>
+      </a>
     </div>
   </header>
 
-  <!-- GENRE PILL SCROLLER -->
-  <div class="px-4 py-3 flex items-center gap-2 overflow-x-auto no-scrollbar border-b border-brand-border/40">
-    <button class="bg-brand text-black font-bold text-xs px-4 py-2 rounded-full whitespace-nowrap">All</button>
-    <button class="bg-[#1A1A20] text-gray-300 font-semibold text-xs px-4 py-2 rounded-full border border-brand-border whitespace-nowrap">Hip-Hop</button>
-    <button class="bg-[#1A1A20] text-gray-300 font-semibold text-xs px-4 py-2 rounded-full border border-brand-border whitespace-nowrap">Pop</button>
-    <button class="bg-[#1A1A20] text-gray-300 font-semibold text-xs px-4 py-2 rounded-full border border-brand-border whitespace-nowrap">Afrosounds</button>
-    <button class="bg-[#1A1A20] text-gray-300 font-semibold text-xs px-4 py-2 rounded-full border border-brand-border whitespace-nowrap">Caribbean</button>
+  <!-- DYNAMIC GENRE FILTER BAR -->
+  <div class="px-4 py-3 flex items-center gap-2 overflow-x-auto no-scrollbar border-b border-brand-border/40 bg-[#0E1013]" id="genre-bar">
+    <button onclick="filterByGenre('all', this)" class="genre-pill bg-brand text-black font-extrabold text-xs px-4 py-2 rounded-full whitespace-nowrap transition-all">All</button>
+    <button onclick="filterByGenre('Hip-Hop', this)" class="genre-pill bg-brand-card text-gray-300 hover:text-white border border-brand-border font-semibold text-xs px-4 py-2 rounded-full whitespace-nowrap transition-all">Hip-Hop</button>
+    <button onclick="filterByGenre('Afrobeats', this)" class="genre-pill bg-brand-card text-gray-300 hover:text-white border border-brand-border font-semibold text-xs px-4 py-2 rounded-full whitespace-nowrap transition-all">Afrobeats</button>
+    <button onclick="filterByGenre('Pop', this)" class="genre-pill bg-brand-card text-gray-300 hover:text-white border border-brand-border font-semibold text-xs px-4 py-2 rounded-full whitespace-nowrap transition-all">Pop</button>
+    <button onclick="filterByGenre('Reggae', this)" class="genre-pill bg-brand-card text-gray-300 hover:text-white border border-brand-border font-semibold text-xs px-4 py-2 rounded-full whitespace-nowrap transition-all">Reggae</button>
+    <button onclick="filterByGenre('Amapiano', this)" class="genre-pill bg-brand-card text-gray-300 hover:text-white border border-brand-border font-semibold text-xs px-4 py-2 rounded-full whitespace-nowrap transition-all">Amapiano</button>
   </div>
 
-  <!-- MAIN TAB CONTENT -->
+  <!-- MAIN VIEW CONTAINER -->
   <main class="px-4 py-4 max-w-7xl mx-auto w-full space-y-8">
 
-    <!-- DISCOVER VIEW -->
-    <div id="view-discover" class="view-section space-y-6">
-      
-      <!-- IN ROTATION / RECENTLY PLAYED -->
+    <!-- DISCOVER TAB -->
+    <div id="view-discover" class="view-section space-y-8">
       <section>
-        <h2 class="text-lg font-black tracking-tight mb-3 uppercase">In Rotation</h2>
-        <div id="container-rotation" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-          <div class="col-span-full py-8 text-center text-xs text-gray-500">Loading tracks from D1...</div>
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-base font-black tracking-wider uppercase text-gray-200">In Rotation</h2>
+          <span class="text-xs text-brand font-bold cursor-pointer" onclick="switchTab('search')">Explore More</span>
+        </div>
+        <div id="container-rotation" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <div class="col-span-full py-8 text-center text-xs text-gray-500">Connecting to Cloudflare D1...</div>
         </div>
       </section>
 
-      <!-- ACCOUNTS FOR YOU -->
       <section>
-        <h2 class="text-lg font-black tracking-tight mb-3 uppercase">Accounts For You</h2>
+        <h2 class="text-base font-black tracking-wider uppercase text-gray-200 mb-3">Featured Creators</h2>
         <div id="container-artists" class="flex gap-4 overflow-x-auto no-scrollbar pb-2">
-          <div class="py-4 text-center text-xs text-gray-500">Loading creators...</div>
+          <div class="py-4 text-center text-xs text-gray-500">Loading artists...</div>
         </div>
       </section>
 
-      <!-- RECENTLY ADDED -->
       <section>
-        <h2 class="text-lg font-black tracking-tight mb-3 uppercase">Recently Added</h2>
+        <h2 class="text-base font-black tracking-wider uppercase text-gray-200 mb-3">Recently Added</h2>
         <div id="container-recent-list" class="divide-y divide-brand-border/40 bg-brand-card rounded-2xl border border-brand-border overflow-hidden">
-          <div class="p-4 text-center text-xs text-gray-500">Connecting to database...</div>
+          <div class="p-4 text-center text-xs text-gray-500">Loading releases...</div>
         </div>
       </section>
     </div>
 
-    <!-- CHARTS VIEW -->
+    <!-- CHARTS TAB -->
     <div id="view-charts" class="view-section hidden space-y-4">
-      <h2 class="text-xl font-black">Top Songs & Charts</h2>
-      <div id="container-charts-list" class="bg-brand-card rounded-2xl border border-brand-border divide-y divide-brand-border/40"></div>
+      <h2 class="text-xl font-black">Top Trending Charts</h2>
+      <div id="container-charts-list" class="bg-brand-card rounded-2xl border border-brand-border divide-y divide-brand-border/40">
+        <div class="p-6 text-center text-xs text-gray-500">Fetching live rankings...</div>
+      </div>
     </div>
 
-    <!-- SEARCH VIEW -->
-    <div id="view-search" class="view-section hidden space-y-4">
+    <!-- SEARCH TAB -->
+    <div id="view-search" class="view-section hidden space-y-6">
       <div class="relative">
-        <i data-lucide="search" class="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-        <input type="text" id="search-input" placeholder="Search artists, songs, albums..." class="w-full bg-brand-card border border-brand-border rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-brand" onkeyup="executeSearch(this.value)" />
+        <i data-lucide="search" class="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+        <input type="text" id="search-input" placeholder="Search artists, songs, or release names..." class="w-full bg-brand-card border border-brand-border rounded-xl pl-12 pr-4 py-3.5 text-sm focus:outline-none focus:border-brand" onkeyup="executeSearch(this.value)" />
       </div>
+
+      <div>
+        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Browse Categories</h3>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="search-categories">
+          <div onclick="filterByGenre('Afrobeats')" class="h-20 bg-gradient-to-br from-orange-600 to-amber-800 rounded-xl p-3 font-black text-sm flex items-end cursor-pointer">Afrobeats</div>
+          <div onclick="filterByGenre('Hip-Hop')" class="h-20 bg-gradient-to-br from-blue-600 to-indigo-900 rounded-xl p-3 font-black text-sm flex items-end cursor-pointer">Hip-Hop</div>
+          <div onclick="filterByGenre('Amapiano')" class="h-20 bg-gradient-to-br from-emerald-600 to-teal-900 rounded-xl p-3 font-black text-sm flex items-end cursor-pointer">Amapiano</div>
+          <div onclick="filterByGenre('Pop')" class="h-20 bg-gradient-to-br from-purple-600 to-pink-900 rounded-xl p-3 font-black text-sm flex items-end cursor-pointer">Pop</div>
+        </div>
+      </div>
+
       <div id="container-search-results" class="space-y-2"></div>
     </div>
 
-    <!-- MY LIBRARY VIEW -->
+    <!-- MY LIBRARY TAB -->
     <div id="view-library" class="view-section hidden space-y-4">
-      <h2 class="text-xl font-black">My Library</h2>
-      <div class="space-y-2">
-        <div class="p-4 bg-brand-card border border-brand-border rounded-xl flex items-center justify-between cursor-pointer" onclick="showToast('Fetching your liked tracks...')">
+      <h2 class="text-xl font-black">My Collection</h2>
+      <div class="space-y-3">
+        <div class="p-4 bg-brand-card border border-brand-border rounded-xl flex items-center justify-between cursor-pointer" onclick="fetchLibraryData('likes')">
           <div class="flex items-center gap-3">
             <i data-lucide="heart" class="w-5 h-5 text-brand"></i>
-            <span class="font-bold text-sm">Likes</span>
+            <span class="font-bold text-sm">Liked Songs</span>
+          </div>
+          <i data-lucide="chevron-right" class="w-4 h-4 text-gray-500"></i>
+        </div>
+        <div class="p-4 bg-brand-card border border-brand-border rounded-xl flex items-center justify-between cursor-pointer" onclick="fetchLibraryData('playlists')">
+          <div class="flex items-center gap-3">
+            <i data-lucide="list-music" class="w-5 h-5 text-brand"></i>
+            <span class="font-bold text-sm">Playlists</span>
           </div>
           <i data-lucide="chevron-right" class="w-4 h-4 text-gray-500"></i>
         </div>
       </div>
+      <div id="container-library-content" class="mt-4"></div>
     </div>
 
   </main>
 
-  <!-- PERSISTENT BOTTOM AUDIOMACK-STYLE PLAYER -->
-  <div class="fixed bottom-16 left-0 right-0 z-40 bg-[#121216]/95 backdrop-blur-md border-t border-brand-border px-4 py-2.5 flex items-center justify-between">
+  <!-- PERSISTENT MINI PLAYER BAR -->
+  <div id="mini-player" class="fixed bottom-16 left-0 right-0 z-40 bg-[#0E1013]/95 backdrop-blur-md border-t border-brand-border px-4 py-2.5 flex items-center justify-between cursor-pointer" onclick="openFullPlayer()">
     <div class="flex items-center gap-3 truncate max-w-[60%]">
-      <img id="player-img" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=100" class="w-10 h-10 rounded-lg object-cover border border-brand-border" />
+      <div class="relative flex-shrink-0">
+        <img id="player-img" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=100" class="w-10 h-10 rounded-lg object-cover border border-brand-border" />
+      </div>
       <div class="truncate">
         <div id="player-title" class="font-bold text-xs text-white truncate">Select a Track</div>
         <div id="player-artist" class="text-[10px] text-gray-400 truncate">Audiory Platform</div>
       </div>
     </div>
 
-    <div class="flex items-center gap-3">
-      <button id="player-play-btn" onclick="togglePlayback()" class="w-9 h-9 bg-brand text-black rounded-full flex items-center justify-center">
+    <div class="flex items-center gap-3" onclick="event.stopPropagation()">
+      <button id="player-play-btn" onclick="togglePlayback()" class="w-9 h-9 bg-brand text-black rounded-full flex items-center justify-center shadow-lg shadow-brand/20">
         <i data-lucide="play" class="w-4 h-4 fill-current"></i>
       </button>
-      <button onclick="showToast('Added to Queue')" class="text-gray-400"><i data-lucide="more-vertical" class="w-5 h-5"></i></button>
+      <button onclick="openFullPlayer()" class="text-gray-400 hover:text-white"><i data-lucide="maximize-2" class="w-4 h-4"></i></button>
     </div>
   </div>
 
-  <!-- MOBILE BOTTOM NAVIGATION TAB BAR -->
-  <nav class="fixed bottom-0 left-0 right-0 z-50 bg-[#0A0A0C] border-t border-brand-border h-16 flex items-center justify-around text-gray-400 text-[10px] font-bold">
-    <button onclick="switchTab('discover')" class="tab-btn active text-brand flex flex-col items-center gap-1" id="btn-tab-discover">
-      <i data-lucide="flame" class="w-5 h-5"></i>
+  <!-- FULL SCREEN CLASSIC AUDIO PLAYER MODAL -->
+  <div id="full-player-modal" class="fixed inset-0 z-50 bg-brand-bg/98 backdrop-blur-2xl flex flex-col justify-between p-6 hidden">
+    <div class="flex items-center justify-between">
+      <button onclick="closeFullPlayer()" class="text-gray-400 hover:text-white"><i data-lucide="chevron-down" class="w-6 h-6"></i></button>
+      <span class="text-xs font-bold uppercase tracking-widest text-gray-400">Now Playing</span>
+      <button onclick="toggleModal('settings-modal')" class="text-gray-400 hover:text-white"><i data-lucide="more-vertical" class="w-5 h-5"></i></button>
+    </div>
+
+    <!-- SPINNING ARTWORK -->
+    <div class="flex flex-col items-center justify-center my-auto">
+      <div class="relative w-64 h-64 sm:w-72 sm:h-72 my-6">
+        <img id="full-player-img" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500" class="w-full h-full rounded-full object-cover border-4 border-brand-border shadow-2xl transition-all" />
+        <div class="absolute inset-0 m-auto w-12 h-12 bg-brand-bg rounded-full border-4 border-brand-border"></div>
+      </div>
+
+      <div class="text-center space-y-1 max-w-xs">
+        <h2 id="full-player-title" class="text-xl font-black text-white truncate">Track Title</h2>
+        <div id="full-player-artist-link" class="text-sm font-bold text-brand hover:underline cursor-pointer" onclick="navigateToArtist()">Artist Name</div>
+        <p id="full-player-release" class="text-xs text-gray-400 truncate">Release Name</p>
+      </div>
+    </div>
+
+    <!-- PROGRESS BAR -->
+    <div class="space-y-2">
+      <input type="range" id="seek-bar" value="0" max="100" class="w-full accent-brand bg-brand-border h-1.5 rounded-lg appearance-none cursor-pointer" onchange="seekAudio(this.value)" />
+      <div class="flex justify-between text-[10px] font-bold text-gray-400">
+        <span id="current-time">0:00</span>
+        <span id="total-duration">0:00</span>
+      </div>
+    </div>
+
+    <!-- PLAYER CONTROLS -->
+    <div class="space-y-6">
+      <div class="flex items-center justify-between px-4">
+        <button id="loop-btn" onclick="toggleLoop()" class="text-gray-400 hover:text-brand font-bold text-xs"><i data-lucide="repeat" class="w-5 h-5"></i></button>
+        <button onclick="skipTrack('prev')" class="text-gray-200 hover:text-white"><i data-lucide="skip-back" class="w-6 h-6"></i></button>
+        <button id="full-play-btn" onclick="togglePlayback()" class="w-16 h-16 bg-brand text-black rounded-full flex items-center justify-center shadow-xl shadow-brand/30">
+          <i data-lucide="play" class="w-8 h-8 fill-current"></i>
+        </button>
+        <button onclick="skipTrack('next')" class="text-gray-200 hover:text-white"><i data-lucide="skip-forward" class="w-6 h-6"></i></button>
+        <button id="like-btn" onclick="toggleLikeCurrentTrack()" class="text-gray-400 hover:text-brand"><i data-lucide="heart" class="w-5 h-5"></i></button>
+      </div>
+
+      <!-- ACTION BUTTONS -->
+      <div class="grid grid-cols-2 gap-3 pt-2">
+        <button onclick="downloadCurrentTrack()" class="flex items-center justify-center gap-2 bg-brand-card border border-brand-border py-3 rounded-xl text-xs font-bold text-white hover:border-brand">
+          <i data-lucide="download" class="w-4 h-4"></i> Download
+        </button>
+        <button onclick="addToPlaylistPrompt()" class="flex items-center justify-center gap-2 bg-brand-card border border-brand-border py-3 rounded-xl text-xs font-bold text-white hover:border-brand">
+          <i data-lucide="plus-circle" class="w-4 h-4"></i> Add to Playlist
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- NOTIFICATIONS MODAL -->
+  <div id="notifications-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex justify-end">
+    <div class="w-full max-w-sm bg-brand-card border-l border-brand-border h-full p-6 space-y-4 overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-brand-border pb-3">
+        <h3 class="font-black text-lg">Notifications</h3>
+        <button onclick="toggleModal('notifications-modal')" class="text-gray-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <div id="notifications-list" class="space-y-3 text-xs text-gray-400">
+        <div class="p-3 bg-[#111317] rounded-xl border border-brand-border/50">
+          <p class="text-white font-bold mb-1">Welcome to Audiory</p>
+          <p>Connect your creator account or start streaming live releases.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS MODAL (SCREENSHOT 3 COMPLIANT) -->
+  <div id="settings-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex justify-end">
+    <div class="w-full max-w-sm bg-brand-card border-l border-brand-border h-full p-6 space-y-6 overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-brand-border pb-3">
+        <h3 class="font-black text-lg uppercase tracking-wider text-brand">Settings</h3>
+        <button onclick="toggleModal('settings-modal')" class="text-gray-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <!-- USER PROFILE HEADER -->
+      <div class="flex items-center gap-3 p-3 bg-[#111317] rounded-xl border border-brand-border" id="settings-profile">
+        <div class="w-10 h-10 bg-brand/20 border border-brand rounded-full flex items-center justify-center font-bold text-brand" id="settings-avatar">G</div>
+        <div class="truncate">
+          <div class="font-bold text-sm text-white truncate" id="settings-username">Guest Listener</div>
+          <div class="text-xs text-gray-400">@guest</div>
+        </div>
+      </div>
+
+      <!-- ACCOUNT SECTION -->
+      <div class="space-y-2">
+        <span class="text-[10px] font-black uppercase text-brand tracking-widest">Account</span>
+        <div class="divide-y divide-brand-border/40 text-xs font-semibold text-gray-300">
+          <a href="/login/" class="py-3 flex justify-between items-center hover:text-white"><span>Sign In / Change Account</span><i data-lucide="chevron-right" class="w-4 h-4"></i></a>
+          <a href="/creators/" class="py-3 flex justify-between items-center hover:text-white"><span>Creator Dashboard</span><i data-lucide="chevron-right" class="w-4 h-4"></i></a>
+          <div onclick="showToast('Password reset link sent to registered email.')" class="py-3 flex justify-between items-center cursor-pointer hover:text-white"><span>Change Password</span><i data-lucide="chevron-right" class="w-4 h-4"></i></div>
+        </div>
+      </div>
+
+      <!-- APP SECTION -->
+      <div class="space-y-2">
+        <span class="text-[10px] font-black uppercase text-brand tracking-widest">App</span>
+        <div class="divide-y divide-brand-border/40 text-xs font-semibold text-gray-300">
+          <div onclick="showToast('Audiory v2.4.0 - Direct D1 Audio Core')" class="py-3 flex justify-between items-center cursor-pointer hover:text-white"><span>Version Info</span><i data-lucide="chevron-right" class="w-4 h-4"></i></div>
+          <div onclick="logout()" class="py-3 flex justify-between items-center cursor-pointer text-red-400 hover:text-red-300"><span>Sign Out</span><i data-lucide="log-out" class="w-4 h-4"></i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM MOBILE NAVIGATION BAR -->
+  <nav class="fixed bottom-0 left-0 right-0 z-50 bg-[#090A0C] border-t border-brand-border h-16 flex items-center justify-around text-gray-400 text-[10px] font-extrabold">
+    <button onclick="switchTab('discover')" class="tab-btn text-brand flex flex-col items-center gap-1" id="btn-tab-discover">
+      <i data-lucide="compass" class="w-5 h-5"></i>
       <span>Discover</span>
     </button>
     <button onclick="switchTab('charts')" class="tab-btn flex flex-col items-center gap-1" id="btn-tab-charts">
-      <i data-lucide="trending-up" class="w-5 h-5"></i>
+      <i data-lucide="bar-chart-2" class="w-5 h-5"></i>
       <span>Charts</span>
     </button>
     <button onclick="switchTab('search')" class="tab-btn flex flex-col items-center gap-1" id="btn-tab-search">
@@ -152,7 +294,7 @@
       <span>Search</span>
     </button>
     <button onclick="switchTab('library')" class="tab-btn flex flex-col items-center gap-1" id="btn-tab-library">
-      <i data-lucide="library" class="w-5 h-5"></i>
+      <i data-lucide="disc" class="w-5 h-5"></i>
       <span>My Library</span>
     </button>
   </nav>
@@ -162,15 +304,25 @@
   <script>
     const API_BASE = 'https://audiorydistribution.dandredurkofficial.workers.dev';
     const audioElement = document.getElementById('audio-engine');
+    
     let isPlaying = false;
+    let loopMode = 0; // 0: Off, 1: Loop All, 2: Loop Single Track
+    let currentTrack = null;
+    let trackList = [];
 
     lucide.createIcons();
 
+    // UI Helpers
     function showToast(msg) {
       const toast = document.getElementById('inline-toast');
       document.getElementById('toast-message').innerText = msg;
       toast.classList.remove('hidden');
-      setTimeout(() => toast.classList.add('hidden'), 3000);
+      setTimeout(() => toast.classList.add('hidden'), 3500);
+    }
+
+    function toggleModal(id) {
+      const modal = document.getElementById(id);
+      modal.classList.toggle('hidden');
     }
 
     function switchTab(tab) {
@@ -181,27 +333,76 @@
       document.getElementById(`btn-tab-${tab}`).classList.add('text-brand');
     }
 
-    async function loadTracksFromD1() {
+    // API Data Fetching (D1 Endpoint Integration)
+    async function fetchTracks(genre = 'all') {
       try {
-        const res = await fetch(`${API_BASE}/api/v1/tracks`);
-        if (!res.ok) throw new Error('API request failed');
-        const tracks = await res.json();
+        const endpoint = genre === 'all' 
+          ? `${API_BASE}/api/v1/tracks` 
+          : `${API_BASE}/api/v1/tracks?genre=${encodeURIComponent(genre)}`;
+          
+        const res = await fetch(endpoint);
+        if (!res.ok) throw new Error('Network error');
         
-        if (tracks && tracks.length > 0) {
-          renderTracks(tracks);
-        } else {
-          showEmptyState();
-        }
+        const data = await res.json();
+        trackList = data || [];
+        renderTracks(trackList);
       } catch (err) {
-        showEmptyState();
+        renderEmptyState();
       }
     }
 
-    function showEmptyState() {
+    function filterByGenre(genre, btnElement) {
+      if (btnElement) {
+        document.querySelectorAll('.genre-pill').forEach(el => {
+          el.className = 'genre-pill bg-brand-card text-gray-300 hover:text-white border border-brand-border font-semibold text-xs px-4 py-2 rounded-full whitespace-nowrap transition-all';
+        });
+        btnElement.className = 'genre-pill bg-brand text-black font-extrabold text-xs px-4 py-2 rounded-full whitespace-nowrap transition-all';
+      }
+      fetchTracks(genre);
+    }
+
+    function renderTracks(tracks) {
+      const rotationContainer = document.getElementById('container-rotation');
+      const recentContainer = document.getElementById('container-recent-list');
+
+      if (!tracks || tracks.length === 0) {
+        renderEmptyState();
+        return;
+      }
+
+      rotationContainer.innerHTML = tracks.map(t => `
+        <div class="bg-brand-card p-3 rounded-xl border border-brand-border cursor-pointer hover:border-brand/50 transition-all group" onclick="playAudioStream('${t.id}')">
+          <div class="aspect-square bg-[#1A1D24] rounded-lg mb-2 overflow-hidden flex items-center justify-center relative">
+            <i data-lucide="music" class="w-8 h-8 text-gray-600 group-hover:scale-110 transition-transform"></i>
+          </div>
+          <div class="font-bold text-xs truncate text-white">${t.title}</div>
+          <div class="text-[10px] text-gray-400 truncate">${t.artist_name || 'Creator'}</div>
+        </div>
+      `).join('');
+
+      recentContainer.innerHTML = tracks.map(t => `
+        <div class="p-3 flex items-center justify-between hover:bg-[#1C1F26] cursor-pointer transition-colors" onclick="playAudioStream('${t.id}')">
+          <div class="flex items-center gap-3 truncate">
+            <div class="w-10 h-10 bg-[#1A1D24] rounded-lg flex items-center justify-center flex-shrink-0">
+              <i data-lucide="disc" class="w-5 h-5 text-brand"></i>
+            </div>
+            <div class="truncate">
+              <div class="font-bold text-xs text-white truncate">${t.title}</div>
+              <div class="text-[10px] text-gray-400 truncate">${t.artist_name || 'Release'}</div>
+            </div>
+          </div>
+          <button class="text-gray-400 hover:text-brand" onclick="event.stopPropagation(); downloadTrack('${t.id}')"><i data-lucide="download" class="w-4 h-4"></i></button>
+        </div>
+      `).join('');
+
+      lucide.createIcons();
+    }
+
+    function renderEmptyState() {
       document.getElementById('container-rotation').innerHTML = `
-        <div class="col-span-full py-6 text-center bg-brand-card rounded-2xl border border-brand-border">
-          <p class="text-xs text-gray-400">No tracks uploaded yet in D1.</p>
-          <a href="/creators/index.html" class="inline-block mt-2 text-xs font-bold text-brand hover:underline">Upload First Track →</a>
+        <div class="col-span-full py-8 text-center bg-brand-card rounded-2xl border border-brand-border p-4">
+          <p class="text-xs text-gray-400">No releases found for this category in D1.</p>
+          <a href="/creators/" class="inline-block mt-3 px-4 py-2 bg-brand text-black font-bold text-xs rounded-xl">Upload First Track →</a>
         </div>
       `;
       document.getElementById('container-recent-list').innerHTML = `
@@ -209,35 +410,24 @@
       `;
     }
 
-    function renderTracks(tracks) {
-      const rotationContainer = document.getElementById('container-rotation');
-      rotationContainer.innerHTML = tracks.map(t => `
-        <div class="bg-brand-card p-2.5 rounded-xl border border-brand-border cursor-pointer hover:border-brand/50 transition-all" onclick="playAudioStream('${t.id}', '${t.title}', '${t.artist_id}')">
-          <div class="aspect-square bg-[#222] rounded-lg mb-2 overflow-hidden flex items-center justify-center">
-            <i data-lucide="music" class="w-8 h-8 text-gray-600"></i>
-          </div>
-          <div class="font-bold text-xs truncate text-white">${t.title}</div>
-          <div class="text-[10px] text-gray-400 truncate">Creator ID: ${t.artist_id.substring(0,6)}...</div>
-        </div>
-      `).join('');
+    // Audio Engine & Player Logic
+    function playAudioStream(trackId) {
+      const track = trackList.find(t => t.id === trackId);
+      if (!track) return;
 
-      lucide.createIcons();
-    }
+      currentTrack = track;
+      document.getElementById('player-title').innerText = track.title;
+      document.getElementById('player-artist').innerText = track.artist_name || 'Creator';
+      document.getElementById('full-player-title').innerText = track.title;
+      document.getElementById('full-player-artist-link').innerText = track.artist_name || 'Creator';
+      document.getElementById('full-player-release').innerText = track.album_name || 'Single Release';
 
-    function playAudioStream(trackId, title, artist) {
-      document.getElementById('player-title').innerText = title;
-      document.getElementById('player-artist').innerText = artist;
       audioElement.src = `${API_BASE}/api/v1/tracks/${trackId}/stream`;
       audioElement.play();
       isPlaying = true;
-      updatePlayBtn();
+      updatePlaybackUI();
 
-      // Log play count event
-      fetch(`${API_BASE}/api/v1/analytics/history`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ track_id: trackId })
-      });
+      document.getElementById('full-player-img').classList.add('animate-spin-slow');
     }
 
     function togglePlayback() {
@@ -245,30 +435,92 @@
       if (audioElement.paused) {
         audioElement.play();
         isPlaying = true;
+        document.getElementById('full-player-img').classList.add('animate-spin-slow');
       } else {
         audioElement.pause();
         isPlaying = false;
+        document.getElementById('full-player-img').classList.remove('animate-spin-slow');
       }
-      updatePlayBtn();
+      updatePlaybackUI();
     }
 
-    function updatePlayBtn() {
-      const btn = document.getElementById('player-play-btn');
-      btn.innerHTML = isPlaying ? `<i data-lucide="pause" class="w-4 h-4 fill-current"></i>` : `<i data-lucide="play" class="w-4 h-4 fill-current"></i>`;
+    function updatePlaybackUI() {
+      const icon = isPlaying ? 'pause' : 'play';
+      document.getElementById('player-play-btn').innerHTML = `<i data-lucide="${icon}" class="w-4 h-4 fill-current"></i>`;
+      document.getElementById('full-play-btn').innerHTML = `<i data-lucide="${icon}" class="w-8 h-8 fill-current"></i>`;
       lucide.createIcons();
     }
 
-    function checkAuthAndRedirect() {
-      const token = localStorage.getItem('audiory_token');
-      if (token) {
-        window.location.href = '/creators/index.html';
+    function toggleLoop() {
+      const loopBtn = document.getElementById('loop-btn');
+      if (loopMode === 0) {
+        loopMode = 1; // Loop All
+        audioElement.loop = false;
+        loopBtn.className = 'text-brand font-bold text-xs';
+        showToast('Looping enabled');
+      } else if (loopMode === 1) {
+        loopMode = 2; // Loop Single Track
+        audioElement.loop = true;
+        loopBtn.className = 'text-brand font-bold text-xs relative';
+        showToast('Looping current track');
       } else {
-        window.location.href = '/login/index.html';
+        loopMode = 0;
+        audioElement.loop = false;
+        loopBtn.className = 'text-gray-400 hover:text-brand font-bold text-xs';
+        showToast('Looping disabled');
       }
     }
 
-    // Load Live D1 Data
-    loadTracksFromD1();
+    function seekAudio(val) {
+      if (audioElement.duration) {
+        audioElement.currentTime = (val / 100) * audioElement.duration;
+      }
+    }
+
+    audioElement.ontimeupdate = () => {
+      if (audioElement.duration) {
+        const progress = (audioElement.currentTime / audioElement.duration) * 100;
+        document.getElementById('seek-bar').value = progress;
+        document.getElementById('current-time').innerText = formatTime(audioElement.currentTime);
+        document.getElementById('total-duration').innerText = formatTime(audioElement.duration);
+      }
+    };
+
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      return `${m}:${s < 10 ? '0' : ''}${s}`;
+    }
+
+    function openFullPlayer() {
+      document.getElementById('full-player-modal').classList.remove('hidden');
+    }
+
+    function closeFullPlayer() {
+      document.getElementById('full-player-modal').classList.add('hidden');
+    }
+
+    function downloadCurrentTrack() {
+      if (currentTrack) {
+        window.open(`${API_BASE}/api/v1/tracks/${currentTrack.id}/download`, '_blank');
+      } else {
+        showToast('Select a track to download');
+      }
+    }
+
+    function addToPlaylistPrompt() {
+      if (currentTrack) {
+        showToast(`Added "${currentTrack.title}" to playlist`);
+      }
+    }
+
+    function logout() {
+      localStorage.removeItem('audiory_token');
+      window.location.reload();
+    }
+
+    // Initialize
+    fetchTracks();
   </script>
 </body>
 </html>
