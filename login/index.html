@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign In - Audiory</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: { brand: { DEFAULT: '#FFA500', bg: '#0D0D0F', card: '#18181C', border: '#26262B' } }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-brand-bg text-gray-100 font-sans min-h-screen flex flex-col justify-center items-center px-4">
+
+  <!-- INLINE ERROR BANNER -->
+  <div id="auth-error" class="hidden mb-4 w-full max-w-sm p-3 bg-red-900/40 border border-red-500 rounded-xl text-xs text-red-200 font-semibold text-center"></div>
+
+  <div class="w-full max-w-sm bg-brand-card border border-brand-border rounded-2xl p-6 space-y-6 shadow-2xl">
+    <div class="text-center space-y-2">
+      <a href="/" class="inline-flex items-center gap-2 text-2xl font-black text-white">
+        <div class="w-8 h-8 bg-brand rounded-lg flex items-center justify-center text-black font-black text-sm">A</div>
+        <span>audiory<span class="text-brand">+</span></span>
+      </a>
+      <h1 class="text-lg font-bold text-gray-200">Sign in to your account</h1>
+    </div>
+
+    <form onsubmit="handleLogin(event)" class="space-y-4">
+      <div>
+        <label class="text-xs font-bold text-gray-400 uppercase tracking-wider">Email Address</label>
+        <input type="email" id="login-email" required class="w-full bg-[#121216] border border-brand-border rounded-xl px-4 py-3 text-sm mt-1 text-white focus:outline-none focus:border-brand" />
+      </div>
+
+      <div>
+        <label class="text-xs font-bold text-gray-400 uppercase tracking-wider">Password</label>
+        <input type="password" id="login-password" required class="w-full bg-[#121216] border border-brand-border rounded-xl px-4 py-3 text-sm mt-1 text-white focus:outline-none focus:border-brand" />
+      </div>
+
+      <button type="submit" id="login-submit-btn" class="w-full bg-brand hover:bg-brand/90 text-black font-extrabold py-3 rounded-xl text-sm transition-all">
+        Sign In
+      </button>
+    </form>
+
+    <div class="text-center text-xs text-gray-400">
+      Don't have an account? <a href="/register/index.html" class="text-brand font-bold hover:underline">Register here</a>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'https://audiorydistribution.dandredurkofficial.workers.dev';
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const errBox = document.getElementById('auth-error');
+      const submitBtn = document.getElementById('login-submit-btn');
+      
+      errBox.classList.add('hidden');
+      submitBtn.innerText = 'Authenticating...';
+      submitBtn.disabled = true;
+
+      const email = document.getElementById('login-email').value;
+      const password = document.getElementById('login-password').value;
+
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to authenticate');
+        }
+
+        // Store Token & User Data in localStorage
+        localStorage.setItem('audiory_token', data.token);
+        localStorage.setItem('audiory_user', JSON.stringify(data.user));
+
+        window.location.href = '/creators/index.html';
+      } catch (err) {
+        errBox.innerText = err.message;
+        errBox.classList.remove('hidden');
+      } finally {
+        submitBtn.innerText = 'Sign In';
+        submitBtn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
