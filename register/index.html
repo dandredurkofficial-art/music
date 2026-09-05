@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Create Account - Audiory</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: { brand: { DEFAULT: '#FFA500', bg: '#0D0D0F', card: '#18181C', border: '#26262B' } }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-brand-bg text-gray-100 font-sans min-h-screen flex flex-col justify-center items-center px-4">
+
+  <div id="auth-error" class="hidden mb-4 w-full max-w-sm p-3 bg-red-900/40 border border-red-500 rounded-xl text-xs text-red-200 font-semibold text-center"></div>
+
+  <div class="w-full max-w-sm bg-brand-card border border-brand-border rounded-2xl p-6 space-y-6 shadow-2xl">
+    <div class="text-center space-y-2">
+      <a href="/" class="inline-flex items-center gap-2 text-2xl font-black text-white">
+        <div class="w-8 h-8 bg-brand rounded-lg flex items-center justify-center text-black font-black text-sm">A</div>
+        <span>audiory<span class="text-brand">+</span></span>
+      </a>
+      <h1 class="text-lg font-bold text-gray-200">Create Creator Account</h1>
+    </div>
+
+    <form onsubmit="handleRegister(event)" class="space-y-4">
+      <div>
+        <label class="text-xs font-bold text-gray-400 uppercase tracking-wider">Display Name</label>
+        <input type="text" id="reg-name" required class="w-full bg-[#121216] border border-brand-border rounded-xl px-4 py-3 text-sm mt-1 text-white focus:outline-none focus:border-brand" />
+      </div>
+
+      <div>
+        <label class="text-xs font-bold text-gray-400 uppercase tracking-wider">Email Address</label>
+        <input type="email" id="reg-email" required class="w-full bg-[#121216] border border-brand-border rounded-xl px-4 py-3 text-sm mt-1 text-white focus:outline-none focus:border-brand" />
+      </div>
+
+      <div>
+        <label class="text-xs font-bold text-gray-400 uppercase tracking-wider">Password</label>
+        <input type="password" id="reg-password" required class="w-full bg-[#121216] border border-brand-border rounded-xl px-4 py-3 text-sm mt-1 text-white focus:outline-none focus:border-brand" />
+      </div>
+
+      <button type="submit" id="reg-submit-btn" class="w-full bg-brand hover:bg-brand/90 text-black font-extrabold py-3 rounded-xl text-sm transition-all">
+        Create Account
+      </button>
+    </form>
+
+    <div class="text-center text-xs text-gray-400">
+      Already have an account? <a href="/login/index.html" class="text-brand font-bold hover:underline">Sign In</a>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'https://audiorydistribution.dandredurkofficial.workers.dev';
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      const errBox = document.getElementById('auth-error');
+      const submitBtn = document.getElementById('reg-submit-btn');
+      
+      errBox.classList.add('hidden');
+      submitBtn.innerText = 'Creating account...';
+      submitBtn.disabled = true;
+
+      const display_name = document.getElementById('reg-name').value;
+      const email = document.getElementById('reg-email').value;
+      const password = document.getElementById('reg-password').value;
+
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ display_name, email, password })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) throw new Error(data.error || 'Registration failed');
+
+        localStorage.setItem('audiory_token', data.token);
+        window.location.href = '/creators/index.html';
+      } catch (err) {
+        errBox.innerText = err.message;
+        errBox.classList.remove('hidden');
+      } finally {
+        submitBtn.innerText = 'Create Account';
+        submitBtn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
