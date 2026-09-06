@@ -1,0 +1,364 @@
+// ============================================================================
+// AUDIORY MUSIC - ENTERPRISE SINGLE-FILE WORKER
+// ============================================================================
+
+const CORS_HEADERS = {
+'Access-Control-Allow-Origin': '*',
+'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-User-Id',
+};
+
+// In-Memory Rate Limiting Cache (Per Worker Instance)
+const RATE_LIMIT_MAP = new Map();
+
+function jsonResponse(data, status = 200) {
+return new Response(JSON.stringify(data), {
+status,
+headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' }
+});
+}
+
+function getPagination(url) {
+const page = parseInt(url.searchParams.get('page') || '1', 10);
+const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 100);
+const offset = (Math.max(1, page) - 1) * limit;
+return { page, limit, offset };
+}
+
+function sanitize(str) {
+if (typeof str !== 'string') return str;
+return str.trim().replace(/[<>]/g, '').substring(0, 2000);
+}
+
+function isValidEmail(email) {
+return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+// Simple In-Memory Rate Limiter
+function checkRateLimit(ip, limit = 100, windowMs = 60000) {
+const now = Date.now();
+const record = RATE_LIMIT_MAP.get(ip) || { count: 0, resetTime: now + windowMs };
+
+if (now > record.resetTime) {
+record.count = 1;
+record.resetTime = now + windowMs;
+} else {
+record.count += 1;
+}
+
+RATE_LIMIT_MAP.set(ip, record);
+return record.count <= limit;
+}
+
+// PBKDF2 Password Hashing
+async function hashPassword(password, saltHex = null) {
+const enc = new TextEncoder();
+const salt = saltHex
+? Uint8Array.from(saltHex.match(/.{1,2}/g).map(b => parseInt(b, 16)))
+: crypto.getRandomValues(new Uint8Array(16));
+
+const keyMaterial = await crypto.subtle.importKey(
+'raw', enc.encode(password), { name: 'PBKDF2' }, false, ['deriveBits', 'deriveKey']
+);
+
+const key = await crypto.subtle.deriveKey(
+{ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+keyMaterial,
+{ name: 'AES-GCM', length: 256 },
+true,
+['encrypt', 'decrypt']
+);
+
+const exported = await crypto.subtle.exportKey('raw', key);
+const hashHex = Array.from(new Uint8Array(exported)).map(b => b.toString(16).padStart(2, '0')).join('');
+const usedSaltHex = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('');
+
+return `${usedSaltHex}:${hashHex}`;
+}
+
+function base64url(source) {
+let encoded = btoa(String.fromCharCode(...new Uint8Array(source)));
+return encoded.replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+async function generateJWT(payload, secret) {
+const header = { alg: 'HS256', typ: 'JWT' };
+const enc = new TextEncoder();
+const stringifiedHeader = base64url(enc.encode(JSON.stringify(header)));
+const stringifiedPayload = base64url(enc.encode(JSON.stringify(payload)));
+const data = `${stringifiedHeader}.${stringifiedPayload}`;
+
+const key = await crypto.subtle.importKey(
+'raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+);
+const signature = await crypto.subtle.sign('HMAC', key, enc.encode(data));
+return `${data}.${base64url(signature)}`;
+}
+
+async function authenticate(request, env) {
+const authHeader = request.headers.get('Authorization');
+if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+
+const token = authHeader.split(' ')[1];
+const parts = token.split('.');
+if (parts.length !== 3) return null;
+
+try {
+const enc = new TextEncoder();
+const key = await crypto.subtle.importKey(
+'raw', enc.encode(env.JWT_SECRET || 'audiory-secret-key-2026'),
+{ name: 'HMAC', hash: 'SHA-256' }, false, ['verify']
+);
+
+const data = `${parts[0]}.${parts[1]}`;
+const signature = Uint8Array.from(atob(parts[2].replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+
+const isValid = await crypto.subtle.verify('HMAC', key, signature, enc.encode(data));
+if (!isValid) return null;
+
+const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+if (payload.exp && Date.now() / 1000 > payload.exp) return null;
+
+return payload;
+} catch (err) {
+return null;
+}
+}
+
+// ============================================================================
+// MAIN FETCH ROUTER
+// ============================================================================
+
+export default {
+async fetch(request, env, ctx) {
+if (request.method === 'OPTIONS') {
+return new Response(null, { headers: CORS_HEADERS });
+}
+
+const clientIp = request.headers.get('CF-Connecting-IP') || '127.0.0.1';
+if (!checkRateLimit(clientIp, 120, 60000)) {
+return jsonResponse({ error: 'Rate limit exceeded. Please try again later.' }, 429);
+}
+
+const url = new URL(request.url);
+const path = url.pathname;
+const method = request.method;
+
+try {
+// ----------------------------------------------------------------------
+// 1. AUTH & USER PROFILES
+// ----------------------------------------------------------------------
+if (path === '/api/v1/auth/register' && method === 'POST') {
+const { email, password, display_name } = await request.json();
+if (!email || !password || !display_name || !isValidEmail(email)) {
+return jsonResponse({ error: 'Invalid or missing fields' }, 400);
+}
+
+const cleanEmail = sanitize(email).toLowerCase();
+const existing = await env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(cleanEmail).first();
+if (existing) return jsonResponse({ error: 'Email already registered' }, 409);
+
+const userId = crypto.randomUUID();
+const password_hash = await hashPassword(password);
+
+await env.DB.prepare('INSERT INTO users (id, email, password_hash, display_name) VALUES (?, ?, ?, ?)')
+.bind(userId, cleanEmail, password_hash, sanitize(display_name)).run();
+
+const token = await generateJWT({ sub: userId, email: cleanEmail }, env.JWT_SECRET || 'audiory-secret-key-2026');
+return jsonResponse({ message: 'User created', userId, token }, 201);
+}
+
+if (path === '/api/v1/auth/login' && method === 'POST') {
+const { email, password } = await request.json();
+const cleanEmail = sanitize(email).toLowerCase();
+const user = await env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(cleanEmail).first();
+if (!user) return jsonResponse({ error: 'Invalid credentials' }, 401);
+
+const [saltHex, originalHash] = user.password_hash.split(':');
+const computed = await hashPassword(password, saltHex);
+if (originalHash !== computed.split(':')[1]) {
+return jsonResponse({ error: 'Invalid credentials' }, 401);
+}
+
+const token = await generateJWT({ sub: user.id, email: user.email }, env.JWT_SECRET || 'audiory-secret-key-2026');
+delete user.password_hash;
+return jsonResponse({ token, user });
+}
+
+if (path === '/api/v1/users/me' && method === 'GET') {
+const authUser = await authenticate(request, env);
+if (!authUser) return jsonResponse({ error: 'Unauthorized' }, 401);
+const user = await env.DB.prepare('SELECT id, email, display_name, avatar_url, bio FROM users WHERE id = ?')
+.bind(authUser.sub).first();
+return jsonResponse(user);
+}
+
+// ----------------------------------------------------------------------
+// 2. ARTISTS, LABELS & AFFILIATIONS
+// ----------------------------------------------------------------------
+if (path === '/api/v1/labels' && method === 'POST') {
+const authUser = await authenticate(request, env);
+if (!authUser) return jsonResponse({ error: 'Unauthorized' }, 401);
+
+const { name } = await request.json();
+const labelId = crypto.randomUUID();
+
+await env.DB.prepare('INSERT INTO labels (id, name, owner_id) VALUES (?, ?, ?)')
+.bind(labelId, sanitize(name), authUser.sub).run();
+
+return jsonResponse({ message: 'Label registered', labelId }, 201);
+}
+
+if (path === '/api/v1/affiliations' && method === 'POST') {
+const authUser = await authenticate(request, env);
+if (!authUser) return jsonResponse({ error: 'Unauthorized' }, 401);
+
+const { label_id, split_percentage } = await request.json();
+const affId = crypto.randomUUID();
+
+await env.DB.prepare('INSERT INTO affiliations (id, user_id, label_id, split_percentage) VALUES (?, ?, ?, ?)')
+.bind(affId, authUser.sub, label_id || null, split_percentage || 100.0).run();
+
+return jsonResponse({ message: 'Affiliation created', affId }, 201);
+}
+
+// ----------------------------------------------------------------------
+// 3. TRACKS, DUPLICATE CHECK & STREAMING
+// ----------------------------------------------------------------------
+if (path === '/api/v1/tracks' && method === 'POST') {
+const authUser = await authenticate(request, env);
+if (!authUser) return jsonResponse({ error: 'Unauthorized' }, 401);
+
+const { title, audio_key, cover_key, duration, lyrics } = await request.json();
+
+// Duplicate Check Guard
+const duplicate = await env.DB.prepare('SELECT id FROM tracks WHERE audio_key = ?').bind(audio_key).first();
+if (duplicate) return jsonResponse({ error: 'Duplicate audio file detected', existingTrackId: duplicate.id }, 409);
+
+const trackId = crypto.randomUUID();
+await env.DB.prepare(
+'INSERT INTO tracks (id, title, artist_id, audio_key, cover_key, duration, lyrics) VALUES (?, ?, ?, ?, ?, ?, ?)'
+).bind(trackId, sanitize(title), authUser.sub, audio_key, cover_key || null, duration || 0, lyrics || null).run();
+
+return jsonResponse({ message: 'Track published', trackId }, 201);
+}
+
+if (path.startsWith('/api/v1/tracks/') && path.endsWith('/stream') && method === 'GET') {
+const trackId = path.split('/')[4];
+const track = await env.DB.prepare('SELECT audio_key FROM tracks WHERE id = ?').bind(trackId).first();
+
+if (!track || !track.audio_key) return jsonResponse({ error: 'Track not found' }, 404);
+
+const object = await env.BUCKET.get(track.audio_key);
+if (!object) return jsonResponse({ error: 'Object not found in R2' }, 404);
+
+const headers = new Headers();
+object.writeHttpMetadata(headers);
+headers.set('Content-Type', 'audio/mpeg');
+headers.set('Access-Control-Allow-Origin', '*');
+return new Response(object.body, { headers });
+}
+
+// ----------------------------------------------------------------------
+// 4. SOCIAL: FOLLOW & UNFOLLOW
+// ----------------------------------------------------------------------
+if (path.startsWith('/api/v1/users/') && path.endsWith('/follow') && method === 'POST') {
+const authUser = await authenticate(request, env);
+if (!authUser) return jsonResponse({ error: 'Unauthorized' }, 401);
+
+const targetId = path.split('/')[4];
+await env.DB.prepare('INSERT OR IGNORE INTO user_follows (follower_id, following_id) VALUES (?, ?)')
+.bind(authUser.sub, targetId).run();
+
+return jsonResponse({ message: 'Followed user successfully' });
+}
+
+if (path.startsWith('/api/v1/users/') && path.endsWith('/unfollow') && method === 'DELETE') {
+const authUser = await authenticate(request, env);
+if (!authUser) return jsonResponse({ error: 'Unauthorized' }, 401);
+
+const targetId = path.split('/')[4];
+await env.DB.prepare('DELETE FROM user_follows WHERE follower_id = ? AND following_id = ?')
+.bind(authUser.sub, targetId).run();
+
+return jsonResponse({ message: 'Unfollowed user successfully' });
+}
+
+// ----------------------------------------------------------------------
+// 5. LIKES & UNLIKES
+// ----------------------------------------------------------------------
+if (path === '/api/v1/me/tracks' && method === 'PUT') {
+const authUser = await authenticate(request, env);
+if (!authUser) return jsonResponse({ error: 'Unauthorized' }, 401);
+
+const { track_id } = await request.json();
+await env.DB.prepare('INSERT OR IGNORE INTO user_likes (user_id, track_id) VALUES (?, ?)')
+.bind(authUser.sub, track_id).run();
+
+return jsonResponse({ message: 'Track liked' });
+}
+
+if (path === '/api/v1/me/tracks' && method === 'DELETE') {
+const authUser = await authenticate(request, env);
+if (!authUser) return jsonResponse({ error: 'Unauthorized' }, 401);
+
+const { track_id } = await request.json();
+await env.DB.prepare('DELETE FROM user_likes WHERE user_id = ? AND track_id = ?')
+.bind(authUser.sub, track_id).run();
+
+return jsonResponse({ message: 'Track unliked' });
+}
+
+// ----------------------------------------------------------------------
+// 6. PLAY LOGGING & ROYALTIES, SALES & PAYOUTS
+// ----------------------------------------------------------------------
+if (path === '/api/v1/analytics/history' && method === 'POST') {
+const authUser = await authenticate(request, env);
+const { track_id } = await request.json();
+
+const userId = authUser ? authUser.sub : 'anonymous';
+
+// Play Deduplication Guard (30s)
+const recent = await env.DB.prepare(
+`SELECT id FROM play_history WHERE user_id = ? AND track_id = ?
+AND played_at > datetime('now', '-30 seconds')`
+).bind(userId, track_id).first();
+
+if (recent) return jsonResponse({ status: 'Play event ignored (deduplicated)' });
+
+await env.DB.prepare('INSERT INTO play_history (user_id, track_id) VALUES (?, ?)').bind(userId, track_id).run();
+await env.DB.prepare('UPDATE tracks SET plays = plays + 1 WHERE id = ?').bind(track_id).run();
+
+return jsonResponse({ status: 'Play logged' });
+}
+
+if (path === '/api/v1/analytics/sales' && method === 'GET') {
+const authUser = await authenticate(request, env);
+if (!authUser) return jsonResponse({ error: 'Unauthorized' }, 401);
+
+const sales = await env.DB.prepare('SELECT * FROM sales WHERE user_id = ? ORDER BY created_at DESC')
+.bind(authUser.sub).all();
+
+return jsonResponse(sales.results);
+}
+
+if (path === '/api/v1/payouts' && method === 'POST') {
+const authUser = await authenticate(request, env);
+if (!authUser) return jsonResponse({ error: 'Unauthorized' }, 401);
+
+const { amount_usd, payout_method } = await request.json();
+const payoutId = crypto.randomUUID();
+
+await env.DB.prepare('INSERT INTO payouts (id, user_id, amount_usd, payout_method) VALUES (?, ?, ?, ?)')
+.bind(payoutId, authUser.sub, amount_usd, payout_method).run();
+
+return jsonResponse({ message: 'Payout requested', payoutId }, 201);
+}
+
+return jsonResponse({ error: 'Endpoint not found' }, 404);
+
+} catch (err) {
+return jsonResponse({ error: 'Internal Error', message: err.message }, 500);
+}
+}
+};
